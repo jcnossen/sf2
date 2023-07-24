@@ -534,6 +534,7 @@ class SFLocalizer:
                 sf_model.SetLevMarParams(lambda_, iterations=iterations, normalizeWeights=normalizeWeights)
                 fits = []
                 crlb = []
+                org_fits = []
                 start_ix = 0
                 with tqdm.tqdm(total=len(ds)) as pb:
                     for rois_info, pixels, readnoise in rois_iterable:
@@ -545,6 +546,7 @@ class SFLocalizer:
                         ix = ix[ix>=0]
                         initial = self.summed_fits[ix, :sf_model.numparams]
                         initial[:, -1] /= len(mp.mod) # divide bg
+                        org_fits.append(initial)
                         
                         mod_batch = mod_per_frame[ds.frame[ix]]
                         mod_batch['phase'] -= rois_info['y'][:,None] * mod_batch['k'][:,:,1]
@@ -564,6 +566,7 @@ class SFLocalizer:
                         
                 fits = np.concatenate(fits)
                 crlb = np.concatenate(crlb)
+                org_fits = np.concatenate(org_fits)
                 
                 sf_ds = SFDataset.fromEstimates(fits, sf_model.param_names, 
                                                   roipos=ds.data.roipos,
@@ -578,8 +581,11 @@ class SFLocalizer:
                 
                 limits = sf_model.ParamLimits()
 
-                sf_ds = sf_ds[ (lp > limits[0][None]).all(1) & 
-                                (lp < limits[1][None]).all(1) ]
+                dist2D = np.sqrt(np.sum((org_fits[:,:2] - fits[:,:2])**2, 1))
+
+                sf_ds = sf_ds[(lp > limits[0][None]).all(1) & 
+                                (lp < limits[1][None]).all(1) &
+                                (dist2D < 0.5)]
 
                 return sf_ds
 
